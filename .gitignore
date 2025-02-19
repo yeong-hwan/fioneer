@@ -1,6 +1,7 @@
 # ---------------- custom ignore ----------------
 /fioneer/data/*
 /fioneer/finnhub/*
+/datasets/transcripts-csv/*
 
 # ---------------- default ignore ----------------
 
