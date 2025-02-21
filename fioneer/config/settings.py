@@ -7,6 +7,7 @@ load_dotenv()
 
 class Settings(BaseSettings):
     ninja_api_key: str = Field(..., env='NINJA_API_KEY')
+    openai_api_key: str = Field(..., env='OPENAI_API_KEY')
 
 @lru_cache()
 def get_settings():

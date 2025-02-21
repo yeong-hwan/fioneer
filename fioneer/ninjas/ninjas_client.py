@@ -1,6 +1,4 @@
-import os
 import requests
-from dotenv import load_dotenv
 from fioneer.config import get_settings
 
 class NinjasClient:
