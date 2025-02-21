@@ -1,14 +1,14 @@
 import os
 import requests
 from dotenv import load_dotenv
-
-load_dotenv()
+from fioneer.config import get_settings
 
 class NinjasClient:
     BASE_URL = "https://api.api-ninjas.com/v1"
 
     def __init__(self):
-        self.ninja_api_key = os.getenv("NINJA_API_KEY")
+        settings = get_settings()
+        self.ninja_api_key = settings.ninja_api_key
         if not self.ninja_api_key:
             raise ValueError("Ninja API Key is not set")
 
