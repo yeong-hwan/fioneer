@@ -53,7 +53,7 @@ def save_earnings_transcript_to_csv(symbol: str, year: int, quarter: int) -> str
     print(df)
     
     # Generate filename with datasets path
-    filename = f"datasets/transcripts-csv/{symbol.lower()}_{year}_Q{quarter}.csv"
+    filename = f"data/processed/transcripts-csv/{symbol.lower()}_{year}_Q{quarter}.csv"
     
     # Save to CSV
     df.to_csv(filename, index=False, encoding='utf-8')
@@ -65,7 +65,7 @@ def process_all_tickers():
     Process earnings calls for all tickers in the ticker list for the last 10 years
     """
     # Read ticker list
-    with open('datasets/ticker_list.json', 'r') as f:
+    with open('data/processed/ticker_list.json', 'r') as f:
         tickers = json.load(f)
     
     # Set year range and quarters

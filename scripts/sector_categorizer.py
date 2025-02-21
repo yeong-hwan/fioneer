@@ -40,4 +40,4 @@ if __name__ == "__main__":
     print(df.to_string(index=False))
     
     # CSV로 저장 (선택사항)
-    df.to_csv('datasets/sector_industry_info.csv', index=False)
+    df.to_csv('data/processed/sector_industry_info.csv', index=False)

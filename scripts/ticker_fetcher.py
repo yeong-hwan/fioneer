@@ -15,7 +15,7 @@ def get_top_tickers(top_count):
     return tickers[:top_count]
 
 def save_tickers_to_json(tickers):
-    with open('datasets/ticker_list.json', 'w') as f:
+    with open('data/processed/ticker_list.json', 'w') as f:
         json.dump(tickers, f, indent=4)
 
 def main():
