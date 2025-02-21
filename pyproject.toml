@@ -32,3 +32,8 @@ pytest = "^8.3.4"
 mypy = "^1.15.0"
 pre-commit = "^4.1.0"
 
+[tool.poetry.scripts]
+test = "fioneer.cli:run_tests"
+test-quiet = "fioneer.cli:run_tests_quiet"
+test-fast = "python -m unittest discover tests -f"
+
