@@ -57,8 +57,8 @@ class MetadataExtractor:
         prompt = [
             {"role": "system", "content": """Given a section of an earnings call transcript, identify and separate the question and answer. 
             If there are multiple distinct questions or points within the same section, split them into separate Q&A pairs.
-            Return in JSON format as a list of Q&A pairs, where each pair has 'question' and 'answer' fields.
-            Format: {"qa_pairs": [{"question": "...", "answer": "..."}]}
+            Return in JSON format as a list of Q&A pairs, where each pair has 'question', 'answer', 'q_speaker', and 'a_speaker' fields.
+            Format: {"qa_pairs": [{"question": "...", "answer": "...", "q_speaker": "...", "a_speaker": "..."}]}
             If there's no clear Q&A structure, return 'NO_QA'."""},
             {"role": "user", "content": content}
         ]
@@ -72,8 +72,8 @@ class MetadataExtractor:
         except:
             return None
 
-    async def _extract_knowledge(self, question: str, answer: str) -> str:
-        """Extract key knowledge from Q&A using OpenAI"""
+    async def _extract_insight(self, question: str, answer: str) -> str:
+        """Extract key insight from Q&A using OpenAI"""
         content = f"Question: {question}\nAnswer: {answer}"
         prompt = [
             {"role": "system", "content": "Analyze this Q&A from an earnings call. Extract key business insights focusing on the question and its corresponding answer. Return the insight directly in one sentence without any prefix. If no meaningful business insight can be extracted, return 'NO_INSIGHT'."},
@@ -86,15 +86,27 @@ class MetadataExtractor:
         """Synchronous version of extract_qa_structure"""
         return asyncio.run(self._extract_qa_structure(content))
 
-    def _extract_knowledge_sync(self, question: str, answer: str) -> str:
-        """Synchronous version of extract_knowledge"""
-        return asyncio.run(self._extract_knowledge(question, answer))
+    def _extract_insight_sync(self, question: str, answer: str) -> str:
+        """Synchronous version of extract_insight"""
+        return asyncio.run(self._extract_insight(question, answer))
+
+    async def _summarize_question(self, question: str) -> str:
+        """Summarize the question into a concise form"""
+        prompt = [
+            {"role": "system", "content": "Summarize this earnings call question into a brief, clear form while maintaining the key points. Return only the summarized question."},
+            {"role": "user", "content": question}
+        ]
+        return await chat_completion(messages=prompt)
+
+    def _summarize_question_sync(self, question: str) -> str:
+        """Synchronous version of summarize_question"""
+        return asyncio.run(self._summarize_question(question))
 
     async def extract_metadata(self) -> List[Dict]:
         """Extract metadata from all CSV files in transcripts directory"""
         total_processed = 0
         skipped_qa = 0
-        skipped_knowledge = 0
+        skipped_insights = 0
 
         csv_files = sorted(self.transcripts_dir.glob("*.csv"))
         if self.max_files:
@@ -163,46 +175,51 @@ class MetadataExtractor:
                 qa_structures = [qa for qa in qa_structures if qa]
                 print(f"Found {len(qa_structures)} Q&A structures to process")
                 
-                file_metadata = []
-                for i, qa_pairs in enumerate(qa_structures):
-                    if not qa_pairs:
-                        continue
-                        
+                # Prepare all Q&A pairs for insight extraction
+                insight_tasks = []
+                for qa_pairs in qa_structures:
                     for qa_pair in qa_pairs:
                         question = qa_pair.get('question')
                         answer = qa_pair.get('answer')
+                        if question and answer:
+                            insight_tasks.append((question, answer))
+
+                # Second pass: Extract insights and summarize questions in parallel
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    insight_results = list(executor.map(
+                        lambda x: self._extract_insight_sync(x[0], x[1]), 
+                        insight_tasks
+                    ))
+                    question_summaries = list(executor.map(
+                        lambda x: self._summarize_question_sync(x[0]),
+                        insight_tasks
+                    ))
+
+                file_metadata = []
+                for (question, answer), result, summary in zip(insight_tasks, insight_results, question_summaries):
+                    if result is None:
+                        print("\nSkipped insight extraction:")
+                        pprint({"question": question, "answer": answer})
+                        skipped_insights += 1
+                        continue
                         
-                        if not question or not answer:
-                            continue
-                            
-                        try:
-                            result = await self._extract_knowledge(question, answer)
-                            
-                            if result is None:
-                                print("\nSkipped knowledge extraction:")
-                                pprint({"question": question, "answer": answer})
-                                skipped_knowledge += 1
-                                continue
-                                
-                            metadata = {
-                                "company": company_row['Company'],
-                                "country": company_row['Country'],
-                                "ticker": file_info['ticker'],
-                                "date": earnings_date,
-                                "year": file_info['year'],
-                                "q": file_info['q'],
-                                "sector": company_row['Sector'],
-                                "industry": company_row['Industry'],
-                                "qa_section": i + 1,
-                                "question": question,
-                                "answer": answer,
-                                "knowledge": result
-                            }
-                            file_metadata.append(metadata)
-                            total_processed += 1
-                        except Exception as e:
-                            print(f"Error processing Q&A pair: {str(e)}")
-                            continue
+                    metadata = {
+                        "company": company_row['Company'],
+                        "country": company_row['Country'],
+                        "ticker": file_info['ticker'],
+                        "date": earnings_date,
+                        "year": file_info['year'],
+                        "q": file_info['q'],
+                        "sector": company_row['Sector'],
+                        "industry": company_row['Industry'],
+                        "q_speaker": qa_pair.get('q_speaker'),
+                        "a_speaker": qa_pair.get('a_speaker'),
+                        "question_summary": summary,
+                        "answer": answer,
+                        "insight": result
+                    }
+                    file_metadata.append(metadata)
+                    total_processed += 1
 
                 self.save_metadata(file_metadata, metadata_path)
                 print(f"Completed processing {csv_path.name} and saved metadata")
@@ -214,7 +231,7 @@ class MetadataExtractor:
         print(f"\nProcessing Summary:")
         print(f"Total processed: {total_processed} entries")
         print(f"Skipped Q&A sections: {skipped_qa}")
-        print(f"Skipped knowledge extractions: {skipped_knowledge}")
+        print(f"Skipped insight extractions: {skipped_insights}")
         return total_processed
 
     def save_metadata(self, metadata_list: List[Dict], metadata_path: Path) -> None:
