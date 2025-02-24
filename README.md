@@ -1,4 +1,9 @@
-# fioneer
+<p align="center">
+  <a href="https://github.com/yeong-hwan/fioneer" title="fioneer">
+    <img src="./docs/imgs/logo.png" alt="fioneer logo" width="128" />
+  </a>
+</p>
+
 
 ### Install
 
@@ -23,7 +28,11 @@ poetry run test-quiet
 
 API Document: https://api-ninjas.com/api/earningscalltranscript
 
+## RAG Flow
 
+<p align="center">
+  <img src="./docs/imgs/rag-flow.png" width="%"/>
+</p>
 ## dataset
 
 ```json
