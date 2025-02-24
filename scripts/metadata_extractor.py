@@ -78,8 +78,6 @@ class MetadataExtractor:
             
             # Validate speaker names
             for qa in qa_pairs:
-                if not qa.get('q_speaker') or qa['q_speaker'].lower() == 'analyst':
-                    qa['q_speaker'] = 'UNKNOWN_SPEAKER'
                 if not qa.get('a_speaker'):
                     qa['a_speaker'] = 'UNKNOWN_SPEAKER'
             
