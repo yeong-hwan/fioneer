@@ -6,11 +6,34 @@ authors = [
     {name = "Yeonghwan Jang",email = "70074446+yeong-hwan@users.noreply.github.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
+    "requests (>=2.32.3,<3.0.0)",
+    "python-dotenv (>=1.0.1,<2.0.0)",
+    "pandas (>=2.2.3,<3.0.0)",
+    "yfinance (>=0.2.54,<0.3.0)",
+    "lxml (>=5.3.1,<6.0.0)",
+    "tqdm (>=4.67.1,<5.0.0)",
+    "pydantic (>=2.10.6,<3.0.0)",
+    "pydantic-settings (>=2.7.1,<3.0.0)",
+    "openai (>=1.63.2,<2.0.0)",
 ]
 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+black = "^25.1.0"
+isort = "^6.0.0"
+flake8 = "^7.1.2"
+pytest = "^8.3.4"
+mypy = "^1.15.0"
+pre-commit = "^4.1.0"
+
+[tool.poetry.scripts]
+test = "fioneer.cli:run_tests"
+test-quiet = "fioneer.cli:run_tests_quiet"
+test-fast = "python -m unittest discover tests -f"
+

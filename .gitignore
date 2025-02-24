@@ -1,3 +1,11 @@
+# ---------------- custom ignore ----------------
+/fioneer/data/*
+/fioneer/finnhub/*
+/data/processed/transcripts/
+/data/processed/metadata/
+
+# ---------------- default ignore ----------------
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
