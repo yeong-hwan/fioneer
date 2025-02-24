@@ -4,7 +4,7 @@
 /data/processed/transcripts/
 /data/processed/metadata/
 /data/2024-earnings-call-transcripts.jsonl
-
+/data/embeddings/
 # ---------------- default ignore ----------------
 
 # Byte-compiled / optimized / DLL files
