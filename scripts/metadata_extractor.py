@@ -11,7 +11,7 @@ class MetadataExtractor:
     # Add constants at the top of the class
     SYSTEM_PROMPT = "Extract key business insights and financial information from the given text. Return the insight directly in one sentence without any prefix. If no meaningful business insight can be extracted, return 'NO_INSIGHT'."
     NO_INSIGHT = "NO_INSIGHT"
-    MAX_WORKERS = 20
+    MAX_WORKERS = 50
 
     def __init__(self, transcripts_dir: str = "data/processed/transcripts/", max_files: int = None):
         self.transcripts_dir = Path(transcripts_dir)
@@ -57,7 +57,14 @@ class MetadataExtractor:
         prompt = [
             {"role": "system", "content": """Given a section of an earnings call transcript, identify and separate the question and answer. 
             If there are multiple distinct questions or points within the same section, split them into separate Q&A pairs.
-            Return in JSON format as a list of Q&A pairs, where each pair has 'question', 'answer', 'q_speaker', and 'a_speaker' fields.
+            Return in JSON format as a list of Q&A pairs, where each pair has:
+            - 'question': the full question text
+            - 'answer': the full answer text
+            - 'q_speaker': the EXACT full name of the person asking the question
+            - 'a_speaker': the EXACT full name of the person answering
+            
+            You must include the FULL NAME of speakers. If a speaker's full name is not provided, mark as 'Analyst'.
+            
             Format: {"qa_pairs": [{"question": "...", "answer": "...", "q_speaker": "...", "a_speaker": "..."}]}
             If there's no clear Q&A structure, return 'NO_QA'."""},
             {"role": "user", "content": content}
@@ -67,8 +74,16 @@ class MetadataExtractor:
             if result == "NO_QA":
                 return None
             qa_dict = json.loads(result)
-            # Return list of Q&A pairs
-            return qa_dict.get('qa_pairs', [])
+            qa_pairs = qa_dict.get('qa_pairs', [])
+            
+            # Validate speaker names
+            for qa in qa_pairs:
+                if not qa.get('q_speaker') or qa['q_speaker'].lower() == 'analyst':
+                    qa['q_speaker'] = 'UNKNOWN_SPEAKER'
+                if not qa.get('a_speaker'):
+                    qa['a_speaker'] = 'UNKNOWN_SPEAKER'
+            
+            return qa_pairs
         except:
             return None
 
@@ -101,6 +116,48 @@ class MetadataExtractor:
     def _summarize_question_sync(self, question: str) -> str:
         """Synchronous version of summarize_question"""
         return asyncio.run(self._summarize_question(question))
+
+    async def _summarize_answer(self, answer: str) -> str:
+        """Summarize the answer into a concise form"""
+        prompt = [
+            {"role": "system", "content": "Summarize this earnings call answer into a brief, clear form while maintaining the key points. Return only the summarized answer."},
+            {"role": "user", "content": answer}
+        ]
+        return await chat_completion(messages=prompt)
+
+    def _summarize_answer_sync(self, answer: str) -> str:
+        """Synchronous version of summarize_answer"""
+        return asyncio.run(self._summarize_answer(answer))
+
+    async def _process_qa_batch(self, qa_pairs: List[Dict]) -> List[Dict]:
+        """Process a batch of Q&A pairs in parallel"""
+        async def process_single_qa(qa: Dict):
+            if not (qa.get('question') and qa.get('answer')):
+                return None
+            
+            # Run all tasks in parallel
+            insight_task = self._extract_insight(qa['question'], qa['answer'])
+            question_summary_task = self._summarize_question(qa['question'])
+            answer_summary_task = self._summarize_answer(qa['answer'])
+            
+            insight, q_summary, a_summary = await asyncio.gather(
+                insight_task, 
+                question_summary_task,
+                answer_summary_task
+            )
+            
+            if insight is None:
+                return None
+                
+            return {
+                'q_speaker': qa.get('q_speaker'),
+                'a_speaker': qa.get('a_speaker'),
+                'question': q_summary,
+                'question_full': qa['question'],
+                'answer': a_summary,
+                'answer_full': qa['answer'],
+                'insight': insight
+            }
 
     async def extract_metadata(self) -> List[Dict]:
         """Extract metadata from all CSV files in transcripts directory"""
@@ -177,14 +234,19 @@ class MetadataExtractor:
                 
                 # Prepare all Q&A pairs for insight extraction
                 insight_tasks = []
-                for qa_pairs in qa_structures:
-                    for qa_pair in qa_pairs:
+                qa_pairs_info = []  # Store Q&A pairs with speaker info
+                for qa_structure in qa_structures:
+                    for qa_pair in qa_structure:
                         question = qa_pair.get('question')
                         answer = qa_pair.get('answer')
                         if question and answer:
                             insight_tasks.append((question, answer))
+                            qa_pairs_info.append({
+                                'q_speaker': qa_pair.get('q_speaker'),
+                                'a_speaker': qa_pair.get('a_speaker')
+                            })
 
-                # Second pass: Extract insights and summarize questions in parallel
+                # Second pass: Extract insights and summarize Q&A in parallel
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     insight_results = list(executor.map(
                         lambda x: self._extract_insight_sync(x[0], x[1]), 
@@ -194,9 +256,15 @@ class MetadataExtractor:
                         lambda x: self._summarize_question_sync(x[0]),
                         insight_tasks
                     ))
+                    answer_summaries = list(executor.map(
+                        lambda x: self._summarize_answer_sync(x[1]),
+                        insight_tasks
+                    ))
 
                 file_metadata = []
-                for (question, answer), result, summary in zip(insight_tasks, insight_results, question_summaries):
+                for (question, answer), result, q_summary, a_summary, speakers in zip(
+                    insight_tasks, insight_results, question_summaries, answer_summaries, qa_pairs_info
+                ):
                     if result is None:
                         print("\nSkipped insight extraction:")
                         pprint({"question": question, "answer": answer})
@@ -212,10 +280,10 @@ class MetadataExtractor:
                         "q": file_info['q'],
                         "sector": company_row['Sector'],
                         "industry": company_row['Industry'],
-                        "q_speaker": qa_pair.get('q_speaker'),
-                        "a_speaker": qa_pair.get('a_speaker'),
-                        "question_summary": summary,
-                        "answer": answer,
+                        "q_speaker": speakers['q_speaker'],
+                        "a_speaker": speakers['a_speaker'],
+                        "question_summary": q_summary,
+                        "answer_summary": a_summary,
                         "insight": result
                     }
                     file_metadata.append(metadata)
