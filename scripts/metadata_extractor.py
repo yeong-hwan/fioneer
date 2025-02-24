@@ -1,4 +1,3 @@
-import os
 import json
 import pandas as pd
 from pathlib import Path
@@ -6,7 +5,7 @@ from typing import Dict, List
 from fioneer.llm.openai_client import chat_completion
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
+from pprint import pprint
 
 class MetadataExtractor:
     # Add constants at the top of the class
@@ -56,25 +55,28 @@ class MetadataExtractor:
     async def _extract_qa_structure(self, content: str) -> Dict:
         """Extract question and answer structure using LLM"""
         prompt = [
-            {"role": "system", "content": "Given a section of an earnings call transcript, identify and separate the questions and answers into multiple pairs. Return in JSON format with array of objects, each containing 'question' and 'answer' as simple strings. If there's no clear Q&A structure, return 'NO_QA'."},
+            {"role": "system", "content": """Given a section of an earnings call transcript, identify and separate the question and answer. 
+            If there are multiple distinct questions or points within the same section, split them into separate Q&A pairs.
+            Return in JSON format as a list of Q&A pairs, where each pair has 'question' and 'answer' fields.
+            Format: {"qa_pairs": [{"question": "...", "answer": "..."}]}
+            If there's no clear Q&A structure, return 'NO_QA'."""},
             {"role": "user", "content": content}
         ]
         result = await chat_completion(messages=prompt)
         try:
             if result == "NO_QA":
                 return None
-            return json.loads(result)
+            qa_dict = json.loads(result)
+            # Return list of Q&A pairs
+            return qa_dict.get('qa_pairs', [])
         except:
             return None
 
     async def _extract_knowledge(self, question: str, answer: str) -> str:
         """Extract key knowledge from Q&A using OpenAI"""
-        if not question or not answer:
-            return None
-            
         content = f"Question: {question}\nAnswer: {answer}"
         prompt = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "system", "content": "Analyze this Q&A from an earnings call. Extract key business insights focusing on the question and its corresponding answer. Return the insight directly in one sentence without any prefix. If no meaningful business insight can be extracted, return 'NO_INSIGHT'."},
             {"role": "user", "content": content}
         ]
         result = await chat_completion(messages=prompt)
@@ -91,6 +93,8 @@ class MetadataExtractor:
     async def extract_metadata(self) -> List[Dict]:
         """Extract metadata from all CSV files in transcripts directory"""
         total_processed = 0
+        skipped_qa = 0
+        skipped_knowledge = 0
 
         csv_files = sorted(self.transcripts_dir.glob("*.csv"))
         if self.max_files:
@@ -143,42 +147,63 @@ class MetadataExtractor:
                 # First pass: Extract Q&A structure
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     qa_structures = list(executor.map(self._extract_qa_sync, qa_sections))
+                
+                # Print skipped Q&A sections
+                skipped_sections = [
+                    (i, section) for i, (qa, section) in enumerate(zip(qa_structures, qa_sections))
+                    if not qa
+                ]
+                if skipped_sections:
+                    print("\nSkipped Q&A sections:")
+                    for i, section in skipped_sections:
+                        print(f"\nSection {i}:")
+                        pprint(section)
+                    skipped_qa += len(skipped_sections)
+                
                 qa_structures = [qa for qa in qa_structures if qa]
-
                 print(f"Found {len(qa_structures)} Q&A structures to process")
-                print(qa_structures)
                 
                 file_metadata = []
-                for i, qa_struct in enumerate(qa_structures):
-                    if qa_struct:
-                        for qa_pair in qa_struct:
-                            try:
-                                result = await self._extract_knowledge(
-                                    qa_pair['question'], 
-                                    qa_pair['answer']
-                                )
-                                
-                                if result is not None:
-                                    metadata = {
-                                        "company": company_row['Company'],
-                                        "country": company_row['Country'],
-                                        "ticker": file_info['ticker'],
-                                        "date": earnings_date,
-                                        "year": file_info['year'],
-                                        "q": file_info['q'],
-                                        "sector": company_row['Sector'],
-                                        "industry": company_row['Industry'],
-                                        "qa_section": i + 1,
-                                        "question": qa_pair['question'],
-                                        "answer": qa_pair['answer'],
-                                        "knowledge": result
-                                    }
-                                    file_metadata.append(metadata)
-                                    total_processed += 1
-                            except Exception as e:
-                                print(f"Error processing Q&A pair: {str(e)}")
+                for i, qa_pairs in enumerate(qa_structures):
+                    if not qa_pairs:
+                        continue
+                        
+                    for qa_pair in qa_pairs:
+                        question = qa_pair.get('question')
+                        answer = qa_pair.get('answer')
+                        
+                        if not question or not answer:
+                            continue
+                            
+                        try:
+                            result = await self._extract_knowledge(question, answer)
+                            
+                            if result is None:
+                                print("\nSkipped knowledge extraction:")
+                                pprint({"question": question, "answer": answer})
+                                skipped_knowledge += 1
                                 continue
-                
+                                
+                            metadata = {
+                                "company": company_row['Company'],
+                                "country": company_row['Country'],
+                                "ticker": file_info['ticker'],
+                                "date": earnings_date,
+                                "year": file_info['year'],
+                                "q": file_info['q'],
+                                "sector": company_row['Sector'],
+                                "industry": company_row['Industry'],
+                                "qa_section": i + 1,
+                                "question": question,
+                                "answer": answer,
+                                "knowledge": result
+                            }
+                            file_metadata.append(metadata)
+                            total_processed += 1
+                        except Exception as e:
+                            print(f"Error processing Q&A pair: {str(e)}")
+                            continue
+
                 self.save_metadata(file_metadata, metadata_path)
                 print(f"Completed processing {csv_path.name} and saved metadata")
                     
@@ -186,7 +211,10 @@ class MetadataExtractor:
                 print(f"Error processing {csv_path}: {str(e)}")
                 continue
 
-        print(f"\nTotal processed: {total_processed} entries from {len(csv_files)} files")
+        print(f"\nProcessing Summary:")
+        print(f"Total processed: {total_processed} entries")
+        print(f"Skipped Q&A sections: {skipped_qa}")
+        print(f"Skipped knowledge extractions: {skipped_knowledge}")
         return total_processed
 
     def save_metadata(self, metadata_list: List[Dict], metadata_path: Path) -> None:
