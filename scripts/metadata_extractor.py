@@ -9,6 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 class MetadataExtractor:
+    # Add constants at the top of the class
+    SYSTEM_PROMPT = "Extract key business insights and financial information from the given text. Return the insight directly in one sentence without any prefix. If no meaningful business insight can be extracted, return 'NO_INSIGHT'."
+    NO_INSIGHT = "NO_INSIGHT"
+    MAX_WORKERS = 20
+
     def __init__(self, transcripts_dir: str = "data/processed/transcripts/", max_files: int = None):
         self.transcripts_dir = Path(transcripts_dir)
         self.transcripts_dir.mkdir(exist_ok=True)
@@ -16,7 +21,7 @@ class MetadataExtractor:
         self.metadata_dir.mkdir(exist_ok=True)
         self.company_info = self._load_company_info()
         self.earnings_dates = self._load_earnings_dates()
-        self.max_workers = 20
+        self.max_workers = self.MAX_WORKERS
         self.max_files = max_files
 
     def _load_company_info(self) -> pd.DataFrame:
@@ -48,24 +53,40 @@ class MetadataExtractor:
             print(f"Error parsing filename {filename}: {str(e)}")
             return None
 
-    async def _extract_knowledge(self, content: str) -> str:
-        """Extract key knowledge from content using OpenAI"""
+    async def _extract_qa_structure(self, content: str) -> Dict:
+        """Extract question and answer structure using LLM"""
         prompt = [
-            {"role": "system", "content": "Extract key business insights and financial information from the given text. Return the insight like analyst report in one sentence. If no meaningful business insight can be extracted, return 'NO_INSIGHT'."},
+            {"role": "system", "content": "Given a section of an earnings call transcript, identify and separate the questions and answers into multiple pairs. Return in JSON format with array of objects, each containing 'question' and 'answer' as simple strings. If there's no clear Q&A structure, return 'NO_QA'."},
             {"role": "user", "content": content}
         ]
         result = await chat_completion(messages=prompt)
-        return result if result != "NO_INSIGHT" else None
-
-    def _extract_knowledge_sync(self, content: str) -> str:
-        """Synchronous version of extract_knowledge"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            result = loop.run_until_complete(self._extract_knowledge(content))
-            return result
-        finally:
-            loop.close()
+            if result == "NO_QA":
+                return None
+            return json.loads(result)
+        except:
+            return None
+
+    async def _extract_knowledge(self, question: str, answer: str) -> str:
+        """Extract key knowledge from Q&A using OpenAI"""
+        if not question or not answer:
+            return None
+            
+        content = f"Question: {question}\nAnswer: {answer}"
+        prompt = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "user", "content": content}
+        ]
+        result = await chat_completion(messages=prompt)
+        return result if result != self.NO_INSIGHT else None
+
+    def _extract_qa_sync(self, content: str) -> Dict:
+        """Synchronous version of extract_qa_structure"""
+        return asyncio.run(self._extract_qa_structure(content))
+
+    def _extract_knowledge_sync(self, question: str, answer: str) -> str:
+        """Synchronous version of extract_knowledge"""
+        return asyncio.run(self._extract_knowledge(question, answer))
 
     async def extract_metadata(self) -> List[Dict]:
         """Extract metadata from all CSV files in transcripts directory"""
@@ -83,17 +104,15 @@ class MetadataExtractor:
                 if not file_info:
                     continue
 
-                # Generate metadata filename
                 metadata_filename = f"{file_info['ticker']}_{file_info['year']}_Q{file_info['q']}.json"
                 metadata_path = self.metadata_dir / metadata_filename
                 
-                # Skip if file already exists
                 if metadata_path.exists():
                     print(f"Skipping already processed file: {csv_path.name}")
                     continue
 
                 earnings_key = f"{file_info['ticker'].lower()}_{file_info['year']}_Q{file_info['q']}"
-                print(f"\nProcessing file {file_idx}/{len(csv_files)}: {csv_path.name} (earnings_key: {earnings_key})")
+                print(f"\nProcessing file {file_idx}/{len(csv_files)}: {csv_path.name}")
                 
                 company_row = self.company_info[
                     self.company_info['Ticker'] == file_info['ticker']
@@ -105,38 +124,61 @@ class MetadataExtractor:
                     continue
                 
                 df = pd.read_csv(csv_path)
-                total_rows = len(df)
-                print(f"Found {total_rows} rows to process")
                 
-                print("Processing utterances...")
-                filtered_df = df[df['speaker'] != 'Operator']
-                contents = filtered_df['content'].tolist()
+                # Group by Operator sections
+                operator_indices = df[df['speaker'] == 'Operator'].index
+                qa_sections = []
+                
+                for i in range(len(operator_indices)):
+                    start_idx = operator_indices[i]
+                    end_idx = operator_indices[i + 1] if i + 1 < len(operator_indices) else len(df)
+                    
+                    section = df.iloc[start_idx:end_idx]
+                    section_text = "\n".join([f"{row['speaker']}: {row['content']}" 
+                                            for _, row in section.iterrows()])
+                    qa_sections.append(section_text)
+
+                print(f"Found {len(qa_sections)} sections to process")
+                
+                # First pass: Extract Q&A structure
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                    results = list(executor.map(self._extract_knowledge_sync, contents))
-                    
-                print("Creating metadata entries...")
-                file_metadata = []
-                for i, (_, row) in enumerate(filtered_df.iterrows()):
-                    if results[i] is not None:
-                        metadata = {
-                            "company": company_row['Company'],
-                            "country": company_row['Country'],
-                            "ticker": file_info['ticker'],
-                            "date": earnings_date,
-                            "year": file_info['year'],
-                            "q": file_info['q'],
-                            "sector": company_row['Sector'],
-                            "industry": company_row['Industry'],
-                            "speaker": row['speaker'],
-                            "knowledge": results[i]
-                        }
-                        file_metadata.append(metadata)
-                        total_processed += 1
-                    
-                    if total_processed % 5 == 0:
-                        print(f"Progress: {total_processed}/{total_rows} utterances processed")
+                    qa_structures = list(executor.map(self._extract_qa_sync, qa_sections))
+                qa_structures = [qa for qa in qa_structures if qa]
+
+                print(f"Found {len(qa_structures)} Q&A structures to process")
+                print(qa_structures)
                 
-                # Save metadata for current file
+                file_metadata = []
+                for i, qa_struct in enumerate(qa_structures):
+                    if qa_struct:
+                        for qa_pair in qa_struct:
+                            try:
+                                result = await self._extract_knowledge(
+                                    qa_pair['question'], 
+                                    qa_pair['answer']
+                                )
+                                
+                                if result is not None:
+                                    metadata = {
+                                        "company": company_row['Company'],
+                                        "country": company_row['Country'],
+                                        "ticker": file_info['ticker'],
+                                        "date": earnings_date,
+                                        "year": file_info['year'],
+                                        "q": file_info['q'],
+                                        "sector": company_row['Sector'],
+                                        "industry": company_row['Industry'],
+                                        "qa_section": i + 1,
+                                        "question": qa_pair['question'],
+                                        "answer": qa_pair['answer'],
+                                        "knowledge": result
+                                    }
+                                    file_metadata.append(metadata)
+                                    total_processed += 1
+                            except Exception as e:
+                                print(f"Error processing Q&A pair: {str(e)}")
+                                continue
+                
                 self.save_metadata(file_metadata, metadata_path)
                 print(f"Completed processing {csv_path.name} and saved metadata")
                     
