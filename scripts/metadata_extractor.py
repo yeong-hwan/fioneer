@@ -85,15 +85,35 @@ class MetadataExtractor:
         except:
             return None
 
-    async def _extract_insight(self, question: str, answer: str) -> str:
-        """Extract key insight from Q&A using OpenAI"""
+    async def _extract_insight(self, question: str, answer: str) -> Dict:
+        """Extract key insight and reasoning steps from Q&A using OpenAI"""
         content = f"Question: {question}\nAnswer: {answer}"
         prompt = [
-            {"role": "system", "content": "Analyze this Q&A from an earnings call. Extract key business insights focusing on the question and its corresponding answer. Return the insight directly in one sentence without any prefix. If no meaningful business insight can be extracted, return 'NO_INSIGHT'."},
+            {"role": "system", "content": """Analyze this Q&A from an earnings call. 
+            First, provide your step-by-step factual reasoning process, focusing on the key business facts and numbers mentioned.
+            Exclude any speaker information or subjective interpretations.
+            Number each reasoning step (1., 2., etc.).
+            Then, extract the key business insight.
+            
+            Return in JSON format:
+            {
+                "reasoning_steps": ["1. fact1", "2. fact2", "3. fact3"],
+                "insight": "final insight"
+            }
+            
+            If no meaningful insight can be extracted, return 'NO_INSIGHT'."""},
             {"role": "user", "content": content}
         ]
         result = await chat_completion(messages=prompt)
-        return result if result != self.NO_INSIGHT else None
+        
+        if result == self.NO_INSIGHT:
+            return None
+            
+        try:
+            result_dict = json.loads(result)
+            return result_dict
+        except:
+            return None
 
     def _extract_qa_sync(self, content: str) -> Dict:
         """Synchronous version of extract_qa_structure"""
@@ -282,7 +302,8 @@ class MetadataExtractor:
                         "a_speaker": speakers['a_speaker'],
                         "question_summary": q_summary,
                         "answer_summary": a_summary,
-                        "insight": result
+                        "insight": result["insight"],
+                        "reasoning_steps": result["reasoning_steps"]
                     }
                     file_metadata.append(metadata)
                     total_processed += 1
