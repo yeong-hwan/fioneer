@@ -19,10 +19,6 @@ poetry run test
 poetry run test-quiet
 ```
 
-### finnhub
-
-API Document: https://finnhub.io/docs/api/introduction
-
 ### ninjas
 
 API Document: https://api-ninjas.com/api/earningscalltranscript
