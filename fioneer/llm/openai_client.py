@@ -58,15 +58,3 @@ async def create_embeddings(
         model=model
     )
     return [data.embedding for data in response.data]
-
-# async def main():
-#     messages = [
-#         {"role": "system", "content": "You are a helpful assistant."},
-#         {"role": "user", "content": "Hello!"}
-#     ]
-#     response = await chat_completion(messages)
-#     print(response)
-
-# if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(main())
