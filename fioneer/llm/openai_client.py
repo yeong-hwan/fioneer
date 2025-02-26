@@ -1,7 +1,7 @@
 from openai import OpenAI
 from fioneer.config import get_settings
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, List
 
 # Define allowed model types
 ModelType = Literal["gpt-3.5-turbo", "gpt-4o-mini"]
@@ -38,14 +38,23 @@ async def chat_completion(
     )
     return response.choices[0].message.content
 
-# async def main():
-#     messages = [
-#         {"role": "system", "content": "You are a helpful assistant."},
-#         {"role": "user", "content": "Hello!"}
-#     ]
-#     response = await chat_completion(messages)
-#     print(response)
-
-# if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(main())
+async def create_embeddings(
+    texts: List[str],
+    model: str = "text-embedding-ada-002"
+) -> List[List[float]]:
+    """
+    Creates embeddings for given texts using OpenAI API
+    
+    Args:
+        texts: List of texts to embed
+        model: OpenAI embedding model to use
+    
+    Returns:
+        List of embedding vectors
+    """
+    client = get_openai_client()
+    response = client.embeddings.create(
+        input=texts,
+        model=model
+    )
+    return [data.embedding for data in response.data]
