@@ -348,7 +348,7 @@ class MetadataExtractor:
 
 async def main():
     # Example: Process only 5 files
-    extractor = MetadataExtractor(max_files=2)  # Remove or set to None to process all files
+    extractor = MetadataExtractor(max_files=2000)  # Remove or set to None to process all files
     await extractor.process()
 
 if __name__ == "__main__":

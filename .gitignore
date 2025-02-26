@@ -6,7 +6,7 @@
 /data/2024-earnings-call-transcripts.jsonl
 /data/embeddings/
 /data/index/
-/gradio/
+/fioneer-hg/
 # ---------------- default ignore ----------------
 
 # Byte-compiled / optimized / DLL files
