@@ -44,7 +44,8 @@ def upload_to_hf():
     # Define paths
     paths_to_upload = [
         ("data/embeddings", "embeddings"),
-        ("data/processed/metadata", "metadata")
+        ("data/processed/metadata", "metadata"),
+        ("data/index", "index")
     ]
     
     # Upload each directory
