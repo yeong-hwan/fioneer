@@ -4,6 +4,14 @@
   </a>
 </p>
 
+## Demo
+
+<p align="center">
+  <img src="./docs/imgs/huggingface-demo.png" width="100%"/>
+</p>
+
+Try our demo on Hugging Face Spaces: [Fioneer Demo](https://huggingface.co/spaces/yeong-hwan/fioneer)
+
 
 ### Install
 
@@ -33,6 +41,7 @@ API Document: https://api-ninjas.com/api/earningscalltranscript
 <p align="center">
   <img src="./docs/imgs/rag-flow.png" width="%"/>
 </p>
+
 ## dataset
 
 ```json
