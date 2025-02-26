@@ -5,6 +5,7 @@
 /data/processed/metadata/
 /data/2024-earnings-call-transcripts.jsonl
 /data/embeddings/
+/data/index/
 /gradio/
 # ---------------- default ignore ----------------
 
