@@ -22,7 +22,7 @@ def upload_to_hf():
     settings = get_settings()
     
     # Initialize API with token
-    api = HfApi(token=settings.hf_token)
+    api = HfApi(token=settings.hf_write_token)
     REPO_ID = "yeong-hwan/fioneer-data"
     
     # Try to create repository, continue if it already exists
