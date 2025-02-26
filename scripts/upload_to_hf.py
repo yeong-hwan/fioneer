@@ -4,6 +4,15 @@ from fioneer.config import get_settings
 import logging
 from tqdm import tqdm
 
+def get_existing_files(api, repo_id, repo_type="dataset"):
+    """Get list of files already in the repository"""
+    try:
+        files_info = api.list_repo_files(repo_id=repo_id, repo_type=repo_type)
+        return set(files_info)
+    except Exception as e:
+        logging.error(f"Error getting existing files: {e}")
+        return set()
+
 def upload_to_hf():
     # Set up logging
     logging.basicConfig(level=logging.INFO)
@@ -26,6 +35,9 @@ def upload_to_hf():
     except Exception as e:
         logger.info(f"Repository already exists or other error occurred: {e}")
     
+    # Get existing files in repository
+    existing_files = get_existing_files(api, REPO_ID)
+    
     # Upload configuration
     CHUNK_SIZE = 50  # Number of files to upload in each chunk
     
@@ -43,9 +55,22 @@ def upload_to_hf():
         files = list(Path(local_dir).rglob("*"))
         files = [f for f in files if f.is_file()]
         
+        # Filter out already uploaded files
+        files_to_upload = []
+        for file in files:
+            repo_path = f"{repo_dir}/{str(file.relative_to(local_dir))}"
+            if repo_path not in existing_files:
+                files_to_upload.append(file)
+        
+        if not files_to_upload:
+            logger.info(f"No new files to upload in {local_dir}")
+            continue
+            
+        logger.info(f"Found {len(files_to_upload)} new files to upload in {local_dir}")
+        
         # Upload in chunks with progress bar
-        for i in tqdm(range(0, len(files), CHUNK_SIZE), desc=f"Uploading {repo_dir}"):
-            chunk = files[i:i + CHUNK_SIZE]
+        for i in tqdm(range(0, len(files_to_upload), CHUNK_SIZE), desc=f"Uploading {repo_dir}"):
+            chunk = files_to_upload[i:i + CHUNK_SIZE]
             try:
                 api.upload_folder(
                     folder_path=local_dir,
