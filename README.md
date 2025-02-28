@@ -22,19 +22,13 @@ source .venv/bin/activate  # Mac/Linux
 .venv\Scripts\activate     # Windows
 ```
 
-### CLI Commands
+### Analysis Steps
 
-```bash
-# Run tests with detailed output
-poetry run test
+> How will the recent U.S. tariff policy impact Apple's business outlook?
 
-# Run tests with minimal output
-poetry run test-quiet
-```
-
-### ninjas
-
-API Document: https://api-ninjas.com/api/earningscalltranscript
+<p align="center">
+  <img src="./docs/imgs/analysis-steps.png" width="%"/>
+</p>
 
 ## RAG Flow
 
@@ -75,6 +69,10 @@ API Document: https://api-ninjas.com/api/earningscalltranscript
 - Utilities
 
 ## Scripts
+
+### ninjas
+
+API Document: https://api-ninjas.com/api/earningscalltranscript
 
 The project contains several Python scripts in the `scripts/` directory for data collection, processing, and analysis of earnings call transcripts.
 
