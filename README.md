@@ -36,7 +36,14 @@ source .venv/bin/activate  # Mac/Linux
   <img src="./docs/imgs/rag-flow.png" width="%"/>
 </p>
 
-## dataset
+## Metadata
+
+<p align="center">
+  <img src="./docs/imgs/metadata.png" width="%"/>
+</p>
+
+
+## Dataset
 
 ```json
 {
