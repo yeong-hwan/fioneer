@@ -12,10 +12,10 @@ def get_company_info():
     tickers = load_tickers()
     results = []
     
-    # tqdm으로 진행률 표시
+    # Show progress with tqdm
     for ticker in tqdm(tickers, desc="Fetching company info"):
         try:
-            # BRK.B와 같은 특수한 티커 처리
+            # Handle special tickers like BRK.B
             ticker_formatted = ticker.replace('.', '-')
             stock = yf.Ticker(ticker_formatted)
             info = stock.info
@@ -32,7 +32,7 @@ def get_company_info():
             print(f"Error processing {ticker}: {str(e)}")
             continue
     
-    # DataFrame으로 변환하여 깔끔하게 출력
+    # Convert to DataFrame for clean output
     df = pd.DataFrame(results)
     return df
 
@@ -41,5 +41,5 @@ if __name__ == "__main__":
     print("\nCompany Information:")
     print(df.to_string(index=False))
     
-    # CSV로 저장 (선택사항)
+    # Save to CSV (optional)
     df.to_csv('data/processed/company_info.csv', index=False)
